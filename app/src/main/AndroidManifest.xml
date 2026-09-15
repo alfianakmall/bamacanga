@@ -78,6 +78,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data android:scheme="bamacanga" />
+                <data android:host="extension-store" />
+            </intent-filter>
+
+            <intent-filter android:label="@string/action_addExtensionStore">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
                 <data android:scheme="mihon" />
                 <data android:host="extension-store" />
             </intent-filter>
