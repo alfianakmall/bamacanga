@@ -34,6 +34,7 @@ import eu.kanade.presentation.manga.components.LibraryBottomActionMenu
 import eu.kanade.presentation.more.onboarding.GETTING_STARTED_URL
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.data.library.CoverUpdateJob
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -123,6 +124,15 @@ data object LibraryTab : Tab {
                     onClickFilter = viewModel::showSettingsDialog,
                     onClickRefresh = { onClickRefresh(state.activeCategory) },
                     onClickGlobalUpdate = { onClickRefresh(null) },
+                    onClickRefreshCovers = {
+                        CoverUpdateJob.startNow(context.workManager)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                context.stringResource(MR.strings.refresh_covers_started),
+                                withDismissAction = true,
+                            )
+                        }
+                    },
                     onClickOpenRandomManga = {
                         scope.launch {
                             val randomItem = viewModel.getRandomLibraryItemForCurrentCategory()
@@ -150,6 +160,17 @@ data object LibraryTab : Tab {
                     onDownloadClicked = viewModel::performDownloadAction
                         .takeIf { state.selectedManga.fastAll { !it.isLocal() } },
                     onDeleteClicked = viewModel::openDeleteMangaDialog,
+                    onRefreshCoversClicked = {
+                        val selection = state.selectedManga.map { it.id }
+                        CoverUpdateJob.startNow(context.workManager, selection)
+                        viewModel.clearSelection()
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                context.stringResource(MR.strings.refresh_covers_started),
+                                withDismissAction = true,
+                            )
+                        }
+                    },
                     onMigrateClicked = {
                         val selection = state.selection
                         viewModel.clearSelection()

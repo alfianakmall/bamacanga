@@ -900,4 +900,11 @@
     <string name="donationCampaign.paragraph3">Bagaimanapun juga, Mihon akan terus dipelihara oleh saya dan para sukarelawan, dan akan tetap bersifat open source.</string>
     <string name="donationCampaign.contactPlatform">Discord</string>
     <string name="donationCampaign.dismiss">Tutup</string>
+    <string name="action_refresh_cover">Perbarui sampul</string>
+    <string name="action_refresh_covers">Perbarui sampul</string>
+    <string name="action_refresh_all_covers">Perbarui semua sampul</string>
+    <string name="refresh_cover_updating">Memperbarui sampul…</string>
+    <string name="refresh_covers_started">Memperbarui sampul di latar belakang…</string>
+    <string name="refresh_covers_completed">Sampul berhasil diperbarui</string>
+    <string name="notification_updating_covers_progress">Memperbarui sampul (%1$s)</string>
 </resources>

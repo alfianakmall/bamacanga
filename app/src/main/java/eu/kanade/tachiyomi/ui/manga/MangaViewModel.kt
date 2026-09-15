@@ -87,6 +87,7 @@ import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
+import eu.kanade.domain.manga.interactor.RefreshMangaCover
 import tachiyomi.i18n.MR
 import tachiyomi.source.local.isLocal
 import kotlin.math.floor
@@ -123,6 +124,7 @@ class MangaViewModel(
     private val sourceManager: SourceManager,
     private val refreshTracks: RefreshTracks,
     private val coverCache: CoverCache,
+    private val refreshMangaCover: RefreshMangaCover,
 ) : ViewModel() {
 
     val state: StateFlow<MangaViewModel.State>
@@ -271,6 +273,28 @@ class MangaViewModel(
                 fetchChapters = true,
             )
             updateSuccessState { it.copy(isRefreshingData = false) }
+        }
+    }
+
+    fun refreshCover() {
+        val manga = successState?.manga ?: return
+        viewModelScope.launch {
+            snackbarHostState.showSnackbar(
+                context.stringResource(MR.strings.refresh_cover_updating),
+                withDismissAction = true,
+            )
+            val result = refreshMangaCover(manga)
+            if (result.isSuccess) {
+                snackbarHostState.showSnackbar(
+                    context.stringResource(MR.strings.cover_updated),
+                    withDismissAction = true,
+                )
+            } else {
+                snackbarHostState.showSnackbar(
+                    context.stringResource(MR.strings.notification_cover_update_failed),
+                    withDismissAction = true,
+                )
+            }
         }
     }
 

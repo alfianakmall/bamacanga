@@ -43,6 +43,8 @@ import tachiyomi.i18n.MR
 import tachiyomi.source.local.image.LocalCoverManager
 import kotlin.time.Duration.Companion.seconds
 
+import eu.kanade.domain.manga.interactor.RefreshMangaCover
+
 @AssistedInject
 class MangaCoverViewModel(
     @Assisted private val mangaId: Long,
@@ -51,6 +53,7 @@ class MangaCoverViewModel(
     private val coverCache: CoverCache,
     private val updateManga: UpdateManga,
     private val coverManager: LocalCoverManager,
+    private val refreshMangaCover: RefreshMangaCover,
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : ViewModel() {
 
@@ -156,6 +159,22 @@ class MangaCoverViewModel(
                 notifyCoverUpdated(context)
             } catch (e: Exception) {
                 notifyFailedCoverUpdate(context, e)
+            }
+        }
+    }
+
+    fun refreshCover(context: Context) {
+        val manga = state.value ?: return
+        viewModelScope.launch {
+            snackbarHostState.showSnackbar(
+                context.stringResource(MR.strings.refresh_cover_updating),
+                withDismissAction = true,
+            )
+            val result = refreshMangaCover(manga)
+            if (result.isSuccess) {
+                notifyCoverUpdated(context)
+            } else {
+                notifyFailedCoverUpdate(context, result.exceptionOrNull() ?: Exception("Unknown error"))
             }
         }
     }

@@ -60,6 +60,7 @@ import mihon.icons.materialsymbols.rounded.Close
 import mihon.icons.materialsymbols.rounded.Edit
 import mihon.icons.materialsymbols.rounded.Save
 import mihon.icons.materialsymbols.rounded.Share
+import mihon.icons.materialsymbols.rounded.Refresh
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
@@ -74,6 +75,7 @@ fun MangaCoverDialog(
     onShareClick: () -> Unit,
     onSaveClick: () -> Unit,
     onEditClick: ((EditCoverAction) -> Unit)?,
+    onRefreshCoverClick: (() -> Unit)? = null,
     onDismissRequest: () -> Unit,
 ) {
     val useNewRenderer = LocalContext.current.appGraph.basePreferences.highQualityRenderer.get()
@@ -107,18 +109,31 @@ fun MangaCoverDialog(
                     Spacer(modifier = Modifier.weight(1f))
                     ActionsPill {
                         AppBarActions(
-                            actions = listOf(
-                                AppBar.Action(
-                                    title = stringResource(MR.strings.action_share),
-                                    icon = MaterialSymbols.Rounded.Share,
-                                    onClick = onShareClick,
-                                ),
-                                AppBar.Action(
-                                    title = stringResource(MR.strings.action_save),
-                                    icon = MaterialSymbols.Rounded.Save,
-                                    onClick = onSaveClick,
-                                ),
-                            ),
+                            actions = buildList {
+                                if (onRefreshCoverClick != null) {
+                                    add(
+                                        AppBar.Action(
+                                            title = stringResource(MR.strings.action_refresh_cover),
+                                            icon = MaterialSymbols.Rounded.Refresh,
+                                            onClick = onRefreshCoverClick,
+                                        ),
+                                    )
+                                }
+                                add(
+                                    AppBar.Action(
+                                        title = stringResource(MR.strings.action_share),
+                                        icon = MaterialSymbols.Rounded.Share,
+                                        onClick = onShareClick,
+                                    ),
+                                )
+                                add(
+                                    AppBar.Action(
+                                        title = stringResource(MR.strings.action_save),
+                                        icon = MaterialSymbols.Rounded.Save,
+                                        onClick = onSaveClick,
+                                    ),
+                                )
+                            },
                         )
                         if (onEditClick != null) {
                             Box {

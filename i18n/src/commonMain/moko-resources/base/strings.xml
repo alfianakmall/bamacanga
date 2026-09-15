@@ -99,6 +99,13 @@
     <string name="delete_category_confirmation">Do you wish to delete the category \"%s\"?</string>
     <string name="delete_category">Delete category</string>
     <string name="action_edit_cover">Edit cover</string>
+    <string name="action_refresh_cover">Refresh cover</string>
+    <string name="action_refresh_covers">Refresh covers</string>
+    <string name="action_refresh_all_covers">Refresh all covers</string>
+    <string name="refresh_cover_updating">Refreshing cover…</string>
+    <string name="refresh_covers_started">Updating covers in background…</string>
+    <string name="refresh_covers_completed">Covers refreshed successfully</string>
+    <string name="notification_updating_covers_progress">Refreshing covers (%1$s)</string>
     <string name="action_view_chapters">View chapters</string>
     <string name="action_pause">Pause</string>
     <string name="action_previous_chapter">Previous chapter</string>

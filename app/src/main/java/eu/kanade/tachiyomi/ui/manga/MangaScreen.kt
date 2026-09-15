@@ -146,6 +146,7 @@ class MangaScreen(
             onCoverClicked = viewModel::showCoverDialog,
             onShareClicked = { shareManga(context, viewModel.manga, viewModel.source) }.takeIf { isHttpSource },
             onDownloadActionClicked = viewModel::runDownloadAction.takeIf { !successState.source.isLocalOrStub() },
+            onRefreshCoverClicked = viewModel::refreshCover,
             onEditCategoryClicked = viewModel::showChangeCategoryDialog.takeIf { successState.manga.favorite },
             onEditFetchIntervalClicked = viewModel::showSetFetchIntervalDialog.takeIf {
                 successState.manga.favorite
@@ -255,6 +256,7 @@ class MangaScreen(
                                 EditCoverAction.DELETE -> vm.deleteCustomCover(context)
                             }
                         },
+                        onRefreshCoverClick = { vm.refreshCover(context) },
                         onDismissRequest = onDismissRequest,
                     )
                 } else {
