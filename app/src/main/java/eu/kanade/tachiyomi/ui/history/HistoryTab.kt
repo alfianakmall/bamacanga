@@ -73,6 +73,7 @@ data object HistoryTab : Tab {
             onClickResume = viewModel::getNextChapterForManga,
             onDialogChange = viewModel::setDialog,
             onClickFavorite = viewModel::addFavorite,
+            onPeriodChange = viewModel::setPeriod,
         )
 
         val onDismissRequest = { viewModel.setDialog(null) }

@@ -47,10 +47,24 @@ import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
+import eu.kanade.presentation.history.components.HistoryPeriod
+import eu.kanade.presentation.history.components.HistoryStatsData
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
+import kotlinx.datetime.toLocalDateTime
+import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.source.service.SourceManager
+import java.util.Locale
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
 @Inject
@@ -61,6 +75,7 @@ class HistoryViewModel(
     private val getCategories: GetCategories,
     private val getDuplicateLibraryManga: GetDuplicateLibraryManga,
     private val getHistory: GetHistory,
+    private val getLibraryManga: GetLibraryManga,
     private val getManga: GetManga,
     private val getNextChapters: GetNextChapters,
     private val libraryPreferences: LibraryPreferences,
@@ -79,7 +94,9 @@ class HistoryViewModel(
 
     private val dialog = MutableStateFlow<Dialog?>(null)
 
-    private val history = searchQuery
+    private val selectedPeriod = MutableStateFlow(HistoryPeriod.THIS_MONTH)
+
+    private val rawHistory = searchQuery
         .flatMapLatest { query ->
             getHistory.subscribe(query ?: "")
                 .distinctUntilChanged()
@@ -87,31 +104,219 @@ class HistoryViewModel(
                     logcat(LogPriority.ERROR, error)
                     _events.send(Event.InternalError)
                 }
-                .map { it.toHistoryUiModels() }
                 .flowOn(Dispatchers.IO)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), emptyList())
 
+    private val libraryMangaFlow = getLibraryManga.subscribe()
+        .catch { logcat(LogPriority.ERROR, it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), emptyList())
+
+    private val stats: StateFlow<HistoryStatsData> = combine(
+        rawHistory,
+        libraryMangaFlow,
+        selectedPeriod,
+    ) { historyList, libraryList, period ->
+        calculateStats(historyList, libraryList, period)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), HistoryStatsData())
+
     val state: StateFlow<State> = combine(
         searchQuery,
-        history,
+        rawHistory.map { it.toHistoryUiModels() },
         dialog,
-    ) { searchQuery, history, dialog ->
-        State(searchQuery = searchQuery, list = history, dialog = dialog)
+        stats,
+        selectedPeriod,
+    ) { searchQuery, historyList, dialog, statsData, period ->
+        State(
+            searchQuery = searchQuery,
+            list = historyList,
+            dialog = dialog,
+            stats = statsData,
+            period = period,
+        )
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), State())
 
     private fun List<HistoryWithRelations>.toHistoryUiModels(): List<HistoryUiModel> {
-        return map { HistoryUiModel.Item(it) }
-            .insertSeparators { before, after ->
-                val beforeDate = before?.item?.readAt?.time?.toLocalDate()
-                val afterDate = after?.item?.readAt?.time?.toLocalDate()
-                when {
-                    beforeDate != afterDate && afterDate != null -> HistoryUiModel.Header(afterDate)
-                    // Return null to avoid adding a separator between two items.
-                    else -> null
+        val result = mutableListOf<HistoryUiModel>()
+        val groupedByDate = this
+            .filter { it.readAt != null }
+            .groupBy { it.readAt!!.time.toLocalDate() }
+            .toSortedMap(compareByDescending { it })
+
+        for ((date, entriesOnDate) in groupedByDate) {
+            result.add(HistoryUiModel.Header(date))
+            val groupedByManga = entriesOnDate.groupBy { it.mangaId }
+            for ((_, mangaEntries) in groupedByManga) {
+                val latest = mangaEntries.first()
+                val chapterNumbers = mangaEntries.map { it.chapterNumber }.distinct().sorted()
+                val totalDuration = mangaEntries.sumOf { it.readDuration }
+                result.add(
+                    HistoryUiModel.Item(
+                        item = latest,
+                        chapters = chapterNumbers,
+                        totalDuration = totalDuration,
+                        latestChapterId = latest.chapterId,
+                    ),
+                )
+            }
+        }
+        return result
+    }
+
+    fun setPeriod(period: HistoryPeriod) {
+        selectedPeriod.update { period }
+    }
+
+    private fun calculateStats(
+        historyList: List<HistoryWithRelations>,
+        libraryList: List<LibraryManga>,
+        period: HistoryPeriod,
+    ): HistoryStatsData {
+        if (historyList.isEmpty()) {
+            return HistoryStatsData(
+                titlesAdded = libraryList.size,
+                triviaText = "Read manga to see fun comparison trivia!",
+            )
+        }
+
+        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val allDates = historyList.mapNotNull { it.readAt?.time?.toLocalDate() }.toSet()
+
+        // 1. Current Streak
+        var currentStreak = 0
+        if (allDates.contains(today)) {
+            currentStreak = 1
+            var checkDate = today.minus(1, DateTimeUnit.DAY)
+            while (allDates.contains(checkDate)) {
+                currentStreak++
+                checkDate = checkDate.minus(1, DateTimeUnit.DAY)
+            }
+        } else {
+            val yesterday = today.minus(1, DateTimeUnit.DAY)
+            if (allDates.contains(yesterday)) {
+                currentStreak = 1
+                var checkDate = yesterday.minus(1, DateTimeUnit.DAY)
+                while (allDates.contains(checkDate)) {
+                    currentStreak++
+                    checkDate = checkDate.minus(1, DateTimeUnit.DAY)
                 }
             }
+        }
+
+        // Longest Streak
+        val sortedDates = allDates.sorted()
+        var longestStreak = 0
+        var tempStreak = 0
+        var prevDate: LocalDate? = null
+        for (date in sortedDates) {
+            if (prevDate == null) {
+                tempStreak = 1
+            } else {
+                if (prevDate.daysUntil(date) == 1) {
+                    tempStreak++
+                } else {
+                    tempStreak = 1
+                }
+            }
+            if (tempStreak > longestStreak) {
+                longestStreak = tempStreak
+            }
+            prevDate = date
+        }
+
+        // 2. Activity Heatmap
+        val activityByDate = mutableMapOf<LocalDate, Long>()
+        for (entry in historyList) {
+            val d = entry.readAt?.time?.toLocalDate() ?: continue
+            activityByDate[d] = (activityByDate[d] ?: 0L) + maxOf(entry.readDuration, 60_000L)
+        }
+
+        // 3. Filter by Period
+        val periodStartDate = when (period) {
+            HistoryPeriod.THIS_MONTH -> LocalDate(today.year, today.month, 1)
+            HistoryPeriod.THIS_WEEK -> {
+                val dayOfWeek = today.dayOfWeek.isoDayNumber
+                today.minus(dayOfWeek - 1, DateTimeUnit.DAY)
+            }
+            HistoryPeriod.ALL_TIME -> LocalDate(1970, 1, 1)
+        }
+
+        val filteredEntries = historyList.filter {
+            val d = it.readAt?.time?.toLocalDate()
+            d != null && d >= periodStartDate && d <= today
+        }
+
+        val timeReadMs = filteredEntries.sumOf { it.readDuration }
+        val daysRead = filteredEntries.mapNotNull { it.readAt?.time?.toLocalDate() }.distinct().size
+
+        val chaptersReadCount = filteredEntries.size
+        val pagesRead = chaptersReadCount * 21
+
+        val favoriteGroup = filteredEntries.groupBy { it.mangaId }
+            .maxByOrNull { (_, entries) -> entries.sumOf { it.readDuration }.takeIf { it > 0 } ?: entries.size.toLong() }
+
+        val favoriteManga = favoriteGroup?.value?.firstOrNull()
+
+        val titlesAdded = when (period) {
+            HistoryPeriod.THIS_MONTH -> {
+                val monthStartEpoch = periodStartDate.atStartOfDayIn(TimeZone.currentSystemDefault()).toEpochMilliseconds()
+                libraryList.count { it.manga.dateAdded >= monthStartEpoch }
+            }
+            HistoryPeriod.THIS_WEEK -> {
+                val weekStartEpoch = periodStartDate.atStartOfDayIn(TimeZone.currentSystemDefault()).toEpochMilliseconds()
+                libraryList.count { it.manga.dateAdded >= weekStartEpoch }
+            }
+            HistoryPeriod.ALL_TIME -> libraryList.size
+        }.let { if (it == 0 && libraryList.isNotEmpty()) libraryList.size else it }
+
+        val avgChaptersPerDay = if (daysRead > 0) {
+            chaptersReadCount.toDouble() / daysRead
+        } else {
+            0.0
+        }
+
+        val wordsEstimate = pagesRead * 50
+        val fahrenheitWords = 46118.0
+        val ratio = wordsEstimate / fahrenheitWords
+        val ratioFormatted = String.format(Locale.US, "%.1f", maxOf(0.1, ratio))
+        val triviaText = "You've read ${ratioFormatted}x as many words as Fahrenheit 451 this month."
+
+        val startOfMonth = LocalDate(today.year, today.month, 1)
+        val monthEntries = historyList.filter {
+            val d = it.readAt?.time?.toLocalDate()
+            d != null && d >= startOfMonth && d <= today
+        }
+        val pagesByDay = mutableMapOf<Int, Int>()
+        for (entry in monthEntries) {
+            val day = entry.readAt?.time?.toLocalDate()?.day ?: continue
+            pagesByDay[day] = (pagesByDay[day] ?: 0) + 21
+        }
+        var cumPages = 0
+        val trendPoints = mutableListOf<Pair<Int, Int>>()
+        for (day in 1..today.day) {
+            cumPages += pagesByDay[day] ?: 0
+            trendPoints.add(Pair(day, cumPages))
+        }
+
+        return HistoryStatsData(
+            currentStreak = currentStreak,
+            longestStreak = maxOf(longestStreak, currentStreak),
+            timeReadMs = timeReadMs,
+            pagesRead = pagesRead,
+            favoriteMangaTitle = favoriteManga?.title,
+            favoriteMangaCover = favoriteManga?.coverData,
+            favoriteMangaId = favoriteManga?.mangaId,
+            daysRead = daysRead,
+            titlesAdded = titlesAdded,
+            avgChaptersPerDay = avgChaptersPerDay,
+            triviaText = triviaText,
+            activityByDate = activityByDate,
+            trendChartPoints = trendPoints,
+            totalPagesThisMonth = cumPages,
+        )
     }
 
     suspend fun getNextChapter(): Chapter? {
@@ -258,6 +463,8 @@ class HistoryViewModel(
         val searchQuery: String? = null,
         val list: List<HistoryUiModel>? = null,
         val dialog: Dialog? = null,
+        val stats: HistoryStatsData = HistoryStatsData(),
+        val period: HistoryPeriod = HistoryPeriod.THIS_MONTH,
     )
 
     sealed interface Dialog {
